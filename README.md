@@ -192,7 +192,7 @@ All stacks are validated against **cdk-nag** (AWS Solutions checks).
 ## Deployment
 
 ```bash
-./scripts/deploy.sh
+./scripts/deploy.sh --cdk
 ```
 
 This will:
@@ -205,7 +205,7 @@ This will:
 
 To skip CDK deployment (e.g., UI-only changes):
 ```bash
-./scripts/deploy.sh --skip-cdk
+./scripts/deploy.sh
 ```
 
 ### Post-Deployment: Create a User

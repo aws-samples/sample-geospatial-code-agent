@@ -1,21 +1,21 @@
 #!/bin/bash
 set -e
 
-SKIP_CDK=false
-if [[ "$1" == "--skip-cdk" ]]; then
-    SKIP_CDK=true
+DEPLOY_CDK=false
+if [[ "$1" == "--cdk" ]]; then
+    DEPLOY_CDK=true
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="$SCRIPT_DIR/../infrastructure"
 UI_DIR="$SCRIPT_DIR/../user-interface"
 
-if [[ "$SKIP_CDK" == false ]]; then
+if [[ "$DEPLOY_CDK" == true ]]; then
     cd "$INFRA_DIR"
     echo "=== Deploying CDK stacks ==="
     cdk deploy --all --require-approval never
 else
-    echo "=== Skipping CDK deployment ==="
+    echo "=== Skipping CDK deployment (use --cdk to deploy) ==="
 fi
 
 cd "$SCRIPT_DIR/.."
@@ -36,11 +36,11 @@ AWS_REGION=$(echo "$AGENT_RUNTIME_ARN" | cut -d: -f4)
 
 echo "=== Generating .env file ==="
 cat > "$UI_DIR/.env" << EOF
-REACT_APP_COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID
-REACT_APP_COGNITO_CLIENT_ID_STATIC_UI=$COGNITO_CLIENT_ID_STATIC_UI
-REACT_APP_COGNITO_IDENTITY_POOL_ID=$COGNITO_IDENTITY_POOL_ID
-REACT_APP_AGENT_RUNTIME_ARN=$AGENT_RUNTIME_ARN
-REACT_APP_AWS_REGION=$AWS_REGION
+VITE_COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID
+VITE_COGNITO_CLIENT_ID_STATIC_UI=$COGNITO_CLIENT_ID_STATIC_UI
+VITE_COGNITO_IDENTITY_POOL_ID=$COGNITO_IDENTITY_POOL_ID
+VITE_AGENT_RUNTIME_ARN=$AGENT_RUNTIME_ARN
+VITE_AWS_REGION=$AWS_REGION
 EOF
 
 echo "=== Building React UI ==="
@@ -49,7 +49,7 @@ npm install
 npm run build
 
 echo "=== Deploying UI to S3 ==="
-aws s3 sync build/ "s3://$BUCKET_NAME" --delete
+aws s3 sync dist/ "s3://$BUCKET_NAME" --delete
 
 echo "=== Invalidating CloudFront cache ==="
 aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"

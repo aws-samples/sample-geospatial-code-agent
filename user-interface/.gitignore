@@ -1,24 +1,22 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
-/node_modules
-/.pnp
-.pnp.js
+node_modules
 
-# testing
-/coverage
+# build output
+dist
+build
 
-# production
-/build
+# tsc build info
+tsconfig.tsbuildinfo
 
-# misc
-.DS_Store
+# env files
+.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-.env
 
+# misc
+.DS_Store
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

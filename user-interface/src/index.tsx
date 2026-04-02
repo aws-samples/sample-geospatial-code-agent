@@ -7,9 +7,9 @@ import App from './App';
 Amplify.configure({
   Auth: {
     Cognito: {
-      userPoolId: process.env.REACT_APP_COGNITO_USER_POOL_ID || '',
-      userPoolClientId: process.env.REACT_APP_COGNITO_CLIENT_ID_STATIC_UI || '',
-      identityPoolId: process.env.REACT_APP_COGNITO_IDENTITY_POOL_ID || '',
+      userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || '',
+      userPoolClientId: import.meta.env.VITE_COGNITO_CLIENT_ID_STATIC_UI || '',
+      identityPoolId: import.meta.env.VITE_COGNITO_IDENTITY_POOL_ID || '',
     }
   }
 });

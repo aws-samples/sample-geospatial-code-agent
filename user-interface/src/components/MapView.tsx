@@ -10,7 +10,7 @@ import {
   type LayerMetadata,
 } from '../utils/layerFormatting';
 
-const MAP_CENTER: [number, number] = [-3.7038, 40.4168]
+const MAP_CENTER: [number, number] = [-0.1276, 51.5074]
 const MAP_ZOOM: number = 14
 
 interface MapViewProps {
