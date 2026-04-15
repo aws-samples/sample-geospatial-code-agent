@@ -1,21 +1,9 @@
-from sys import platform
-
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
 
 from geospatial_agent.bedrock_models import DEFAULT_MODEL_ID
 
 app = BedrockAgentCoreApp()
-
-if platform == "darwin":
-    # During development, allow connection from default npm port 3000
-    from starlette.middleware.cors import CORSMiddleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
-        allow_methods=["POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Accept"],
-    )
 
 
 @app.entrypoint

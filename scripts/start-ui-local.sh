@@ -22,26 +22,39 @@ COGNITO_CLIENT_ID_STATIC_UI=$(get_output "CognitoClientIdStaticUI")
 COGNITO_IDENTITY_POOL_ID=$(get_output "CognitoIdentityPoolId")
 AGENT_RUNTIME_ARN=$(get_output "AgentRuntimeArn")
 
-if [ -z "$AGENT_RUNTIME_ARN" ]; then
+if [ "$USE_LOCAL_AGENT" = "false" ] && [ -z "$AGENT_RUNTIME_ARN" ]; then
     echo "Error: Could not retrieve stack outputs. Make sure the stack '$STACK_NAME' is deployed."
     exit 1
 fi
 
 AWS_REGION=$(echo "$AGENT_RUNTIME_ARN" | cut -d: -f4)
+if [ -z "$AWS_REGION" ]; then
+    AWS_REGION="us-east-1"
+fi
 
 echo "=== Generating .env.local file ==="
-cat > "$UI_DIR/.env.local" << EOF
+if [ "$USE_LOCAL_AGENT" = "true" ]; then
+    # Don't set AGENT_RUNTIME_ARN — the UI will use /invocations (proxied by Vite)
+    cat > "$UI_DIR/.env.local" << EOF
+VITE_COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID
+VITE_COGNITO_CLIENT_ID_STATIC_UI=$COGNITO_CLIENT_ID_STATIC_UI
+VITE_COGNITO_IDENTITY_POOL_ID=$COGNITO_IDENTITY_POOL_ID
+VITE_AGENT_RUNTIME_ARN=
+VITE_AWS_REGION=$AWS_REGION
+EOF
+else
+    cat > "$UI_DIR/.env.local" << EOF
 VITE_COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID
 VITE_COGNITO_CLIENT_ID_STATIC_UI=$COGNITO_CLIENT_ID_STATIC_UI
 VITE_COGNITO_IDENTITY_POOL_ID=$COGNITO_IDENTITY_POOL_ID
 VITE_AGENT_RUNTIME_ARN=$AGENT_RUNTIME_ARN
 VITE_AWS_REGION=$AWS_REGION
-VITE_USE_LOCAL_AGENT=$USE_LOCAL_AGENT
 EOF
+fi
 
 echo "Configuration retrieved:"
 echo "  Region: $AWS_REGION"
-echo "  Agent Runtime ARN: $AGENT_RUNTIME_ARN"
+echo "  Local agent: $USE_LOCAL_AGENT"
 echo ""
 
 cd "$UI_DIR"

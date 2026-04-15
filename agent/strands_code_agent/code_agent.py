@@ -69,6 +69,7 @@ class CodeAgent(Agent):
                     domain_specific_code.extend(toolkit.domain_specific_code)
 
         additional_functions = {}
+        domain_specific_doc = ""
         if domain_specific_code:
             authorized_imports.update(sym.__module__ for sym in domain_specific_code)
             initialization_code.append(get_import_string(domain_specific_code))

@@ -4,8 +4,7 @@ import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from '@aws-sdk/clie
 
 const AGENT_RUNTIME_ARN = import.meta.env.VITE_AGENT_RUNTIME_ARN || '';
 const REGION = import.meta.env.VITE_AWS_REGION || 'us-east-1';
-const USE_LOCAL_AGENT = import.meta.env.VITE_USE_LOCAL_AGENT === 'true';
-const LOCAL_AGENT_URL = 'http://localhost:8080/invocations';
+const USE_LOCAL_AGENT = !AGENT_RUNTIME_ARN;
 
 export async function* streamAgentInvoke(
   prompt: string, 
@@ -24,7 +23,7 @@ export async function* streamAgentInvoke(
   let reader: ReadableStreamDefaultReader<Uint8Array>;
 
   if (USE_LOCAL_AGENT) {
-    const response = await fetch(LOCAL_AGENT_URL, {
+    const response = await fetch('/invocations', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

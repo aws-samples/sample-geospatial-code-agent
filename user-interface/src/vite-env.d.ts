@@ -6,7 +6,6 @@ interface ImportMetaEnv {
   readonly VITE_COGNITO_IDENTITY_POOL_ID: string;
   readonly VITE_AGENT_RUNTIME_ARN: string;
   readonly VITE_AWS_REGION: string;
-  readonly VITE_USE_LOCAL_AGENT: string;
 }
 
 interface ImportMeta {
