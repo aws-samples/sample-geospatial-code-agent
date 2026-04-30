@@ -8,7 +8,7 @@ from jinja2 import Template
 
 from strands_code_agent import CodeAgent
 from strands_code_agent.utils import image_to_base64
-from strands_code_agent.toolkits import Toolkit, VISUALIZATION_TOOLKIT, NUMPY, DATETIME
+from strands_code_agent.toolkits import Toolkit, VISUALIZATION_TOOLKIT, DATA_ANALYSIS_TOOLKIT
 
 from geospatial_agent.bedrock_models import MODELS, DEFAULT_MODEL_ID, DEFAULT_TEMPERATURE
 from geospatial import (
@@ -94,7 +94,7 @@ class GeospatialAgent:
             system_prompt=SYSTEM_PROMPT,
             tools=[visualize_image, visualize_map_raster_layer, share_file_with_client],
             toolkits=[
-                VISUALIZATION_TOOLKIT, NUMPY, DATETIME,
+                VISUALIZATION_TOOLKIT, DATA_ANALYSIS_TOOLKIT,
                 Toolkit(
                     initialization_code=INITIALIZATION_CODE.render(AOI_COORDINATES=coordinates),
                     domain_specific_code=[

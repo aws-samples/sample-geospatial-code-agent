@@ -8,6 +8,7 @@ smolagents==1.24.0
 
 # Geospatial Analysis
 numpy==2.2.6
+pandas==2.2.3
 scipy==1.17.1
 pystac==1.14.1
 pystac_client==0.9.0
