@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm';
 import type { Message, ImageOverlay } from '../types';
 import { streamAgentInvoke } from '../services/api';
 import { useReactToPrint } from 'react-to-print';
+import { useAuth } from '../auth';
 
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -61,6 +62,7 @@ export function ChatSidebar({
   onCoordinatesChange,
   onOverlayAdd
 }: ChatSidebarProps) {
+  const { signOut } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [history, setHistory] = useState<Array<[string, string]>>([]);
   const [userInput, setUserInput] = useState('');
@@ -216,7 +218,7 @@ export function ChatSidebar({
   );
 
   return (
-    <Container header={<Header variant="h2">Chat</Header>}>
+    <Container header={<Header variant="h2" actions={<Button variant="normal" onClick={signOut}>Logout</Button>}>Chat</Header>}>
       <SpaceBetween size="m">
         <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
           {messages.length === 0 ? (
