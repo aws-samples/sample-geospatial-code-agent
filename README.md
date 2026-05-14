@@ -77,7 +77,7 @@ A critical architectural decision is the use of a **coding agent** rather than a
 - **No serialization overhead**: Data stays in Python memory — no need to serialize NumPy arrays to JSON and back.
 - **Self-extending**: The agent can write helper functions on the fly if needed.
 
-The agent is built with the [Strands Agents SDK](https://github.com/strands-agents/sdk-python) and has four tools:
+The agent is built with the [Strands Agents SDK](https://github.com/strands-agents/sdk-python) and the [`strands-code-agent`](https://pypi.org/project/strands-code-agent/) library, and has four tools:
 - `python_repl` — Executes Python code (primary tool)
 - `visualize_image` — Sends a PNG image to the UI
 - `visualize_map_raster_layer` — Adds a raster overlay to the map
@@ -93,14 +93,14 @@ The agent container is built from `./agent/` and pushed to ECR during deployment
 
 ### The Python Environment
 
-The Python interpreter (`./agent/geospatial_agent/python_environment.py`) wraps Python's built-in `exec()` function:
+The Python interpreter (provided by `strands-code-agent`) defaults to a sandboxed environment:
 - **State persistence within a turn**: Variables persist across multiple `python_repl` calls within a single user message — the agent can fetch data in one code block, then analyze it in the next.
 - **State reset between turns**: The interpreter resets completely with each new user message.
 - **Pre-loaded environment**: The geospatial library functions, NumPy, datetime utilities, and matplotlib are pre-loaded — the agent does not need to import them.
 
 ### Code Documentation
 
-The file `./agent/geospatial_agent/document_code.py` automatically extracts documentation from Python functions and classes using `inspect`. This documentation is injected into the agent's system prompt so the LLM knows what functions are available and how to use them. When you add a new function to the geospatial library with a proper docstring and type hints, it is automatically available to the agent.
+The `strands-code-agent` library automatically extracts documentation from Python functions and classes using `inspect`. This documentation is injected into the agent's system prompt so the LLM knows what functions are available and how to use them. When you add a new function to the geospatial library with a proper docstring and type hints, it is automatically available to the agent.
 
 ### Supported LLM Models
 
@@ -282,7 +282,7 @@ The `AgentClient` class in `./evaluation/agent_client.py` handles Cognito authen
 2. Export in `__init__.py` and register in the `IMPORTED_CODE` list in `agent.py`
 3. Redeploy — CDK detects code changes and rebuilds the container automatically
 
-The agent auto-discovers function documentation via `./agent/geospatial_agent/document_code.py`, so new functions are immediately available to the LLM.
+The agent auto-discovers function documentation via `strands-code-agent`, so new functions are immediately available to the LLM.
 
 ### Adding a New Spectral Index
 

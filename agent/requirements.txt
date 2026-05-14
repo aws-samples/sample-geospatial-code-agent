@@ -1,5 +1,6 @@
 # AWS Agentcore and Strands
 strands-agents==1.20.0
+strands-code-agent>=0.1.0
 bedrock-agentcore==1.1.1
 aws-opentelemetry-distro==0.12.0
 boto3==1.42.2
