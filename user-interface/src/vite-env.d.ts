@@ -11,3 +11,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+declare module 'plotly.js/dist/plotly.min.js' {
+  export function newPlot(root: HTMLElement, data: any[], layout?: any, config?: any): Promise<any>;
+  export function purge(root: HTMLElement): void;
+}
