@@ -98,6 +98,13 @@ export async function* streamAgentInvoke(
           const fileName = event.input.file_path?.split('/').pop() || 'file';
           yield { type: 'file_link', content: event.pre_signed_s3_url, fileName };
 
+        } else if (event.msg_type === 'toolUse' && event.name === 'visualize_interactive_chart') {
+          yield {
+            type: 'interactive_chart',
+            content: event.chart_spec,
+            chartType: event.input.chart_type || 'plotly'
+          };
+
         } else if (event.msg_type === 'text' && event.text) {
           yield { type: 'text', content: event.text };
         

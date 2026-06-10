@@ -15,9 +15,11 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-markdown": "^10.1.0",
+    "react-plotly.js": "^2.6.0",
     "react-syntax-highlighter": "^16.1.0",
     "react-to-print": "^3.3.0",
     "remark-gfm": "^4.0.1",
+    "plotly.js": "^2.35.3",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
@@ -25,6 +27,7 @@
     "@types/node": "^22.15.0",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
+    "@types/react-plotly.js": "^2.6.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.4.1",

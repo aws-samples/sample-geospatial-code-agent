@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message, ImageOverlay } from '../types';
 import { streamAgentInvoke } from '../services/api';
+import { InteractiveChart } from './InteractiveChart';
 import { useReactToPrint } from 'react-to-print';
 import { useAuth } from '../auth';
 
@@ -143,6 +144,15 @@ export function ChatSidebar({
             content: `📎 [${fileName}](${url})`
           }]);
 
+        } else if (event.type === 'interactive_chart' && event.content) {
+          const chartSpec = event.content;
+          const chartType = event.chartType || 'plotly';
+          setMessages((prev) => [...prev, {
+            role: 'assistant' as const,
+            content: '',
+            charts: [{ spec: chartSpec, type: chartType }]
+          }]);
+
         } else if (event.type === 'execution_output' && event.content) {
           const outputContent = event.content;
           setMessages((prev) => [...prev, {
@@ -214,6 +224,9 @@ export function ChatSidebar({
         {msg.content}
       </ReactMarkdown>
       {msg.images && renderImages(msg.images)}
+      {msg.charts?.map((chart, idx) => (
+        <InteractiveChart key={idx} spec={chart.spec} type={chart.type} />
+      ))}
     </>
   );
 

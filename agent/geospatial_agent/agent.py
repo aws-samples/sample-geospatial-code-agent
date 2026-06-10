@@ -10,6 +10,16 @@ from strands_code_agent import CodeAgent
 from strands_code_agent.utils import image_to_base64
 from strands_code_agent.toolkits import Toolkit, VISUALIZATION_TOOLKIT, DATA_ANALYSIS_TOOLKIT
 
+PLOTLY_TOOLKIT = Toolkit(
+    libraries=['plotly.*'],
+    initialization_code="import plotly.express as px\nimport plotly.graph_objects as go",
+    usage_instructions="""
+When creating interactive charts, use plotly.express or plotly.graph_objects.
+Save the figure to a JSON file with fig.write_json(), then call the visualize_interactive_chart tool with the file path.
+Do NOT call fig.show() — there is no GUI.
+""",
+)
+
 from geospatial_agent.bedrock_models import MODELS, DEFAULT_MODEL_ID, DEFAULT_TEMPERATURE
 from geospatial import (
     get_satellite_data,
@@ -62,6 +72,24 @@ def visualize_map_raster_layer(
 
 
 @tool
+def visualize_interactive_chart(chart_path: str, chart_type: str = "plotly"):
+    """
+    Send an interactive chart to the client for rendering.
+    The chart will be rendered as an interactive visualization with zoom, pan, and hover tooltips.
+
+    First save the chart JSON to a file, then call this tool with the file path:
+        fig = px.line(df, x='date', y='ndvi_mean')
+        fig.write_json('/tmp/.../chart.json')
+        visualize_interactive_chart(chart_path='/tmp/.../chart.json')
+
+    Args:
+        chart_path: Path to a JSON file containing the chart specification (written with fig.write_json() for Plotly).
+        chart_type: Either "plotly" or "vega-lite".
+    """
+    pass
+
+
+@tool
 def share_file_with_client(file_path: str):
     """
     Share a big file with the client through S3.
@@ -73,7 +101,7 @@ def share_file_with_client(file_path: str):
 
 
 # UI tools used to communicate with the client application, and not providing an actual response.
-UI_TOOLS = {'visualize_image', 'visualize_map_raster_layer'}
+UI_TOOLS = {'visualize_image', 'visualize_map_raster_layer', 'visualize_interactive_chart'}
 
 
 class GeospatialAgent:
@@ -92,9 +120,9 @@ class GeospatialAgent:
 
         self.agent = CodeAgent(
             system_prompt=SYSTEM_PROMPT,
-            tools=[visualize_image, visualize_map_raster_layer, share_file_with_client],
+            tools=[visualize_image, visualize_map_raster_layer, visualize_interactive_chart, share_file_with_client],
             toolkits=[
-                VISUALIZATION_TOOLKIT, DATA_ANALYSIS_TOOLKIT,
+                VISUALIZATION_TOOLKIT, DATA_ANALYSIS_TOOLKIT, PLOTLY_TOOLKIT,
                 Toolkit(
                     initialization_code=INITIALIZATION_CODE.render(AOI_COORDINATES=coordinates),
                     domain_specific_code=[
@@ -145,7 +173,11 @@ class GeospatialAgent:
                         toolUse["msg_type"] = "toolUse"
 
                         if toolUse['name'] in UI_TOOLS:
-                            toolUse['image'] = image_to_base64(toolUse['input']['image_path'])
+                            if toolUse['name'] == 'visualize_interactive_chart':
+                                with open(toolUse['input']['chart_path'], 'r') as f:
+                                    toolUse['chart_spec'] = f.read()
+                            else:
+                                toolUse['image'] = image_to_base64(toolUse['input']['image_path'])
 
                         if toolUse['name'] == 'share_file_with_client':
                             file_key = f"{self.session_id}/{os.path.basename(toolUse['input']['file_path'])}"

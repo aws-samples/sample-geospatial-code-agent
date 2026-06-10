@@ -27,3 +27,4 @@ geopandas==1.1.3
 # Visualization
 matplotlib==3.10.7
 seaborn==0.13.2
+plotly==6.1.2
