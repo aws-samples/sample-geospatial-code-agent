@@ -29,9 +29,9 @@
     "@types/react-dom": "^19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/uuid": "^10.0.0",
-    "@vitejs/plugin-react": "^4.4.1",
+    "@vitejs/plugin-react": "^6.0.2",
     "typescript": "^5.8.3",
-    "vite": "^6.4.2"
+    "vite": "^8.0.16"
   },
   "scripts": {
     "dev": "vite",
