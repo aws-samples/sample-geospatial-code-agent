@@ -17,6 +17,7 @@ import numpy as np
 import stackstac
 import xarray as xr
 import rioxarray
+import rasterio
 
 
 # For other STAC servers see: https://stacindex.org/catalogs?access=public&type=api
@@ -34,6 +35,10 @@ SATELLITES = {
         'rename_bands': {
             'nir08': 'nir'
         }
+    },
+    "naip": {
+        'collection': "naip",
+        'start': date(2010, 1, 1),
     },
 }
 
@@ -318,3 +323,147 @@ def get_satellite_data(
     print(f"CRS: {scene_data.attrs.get('crs', 'N/A')}")
 
     return best_scene
+
+
+def get_high_resolution_image(
+    polygon_coordinates: list[list[float]],
+    start_date: date | None = None,
+    end_date: date | None = None,
+    resolution: float = 0.6,
+) -> dict[str, Any]:
+    """Retrieve a high-resolution aerial image suitable for visual inspection
+    and object detection (e.g., cars, airplanes, ships, buildings).
+
+    Uses NAIP (National Agriculture Imagery Program) imagery at 0.3-0.6m
+    resolution. Coverage: contiguous United States only (2010-present).
+
+    The returned RGB image has sufficient resolution to identify individual
+    vehicles (~4m), aircraft (~30-70m), ships (~10-300m), and buildings.
+
+    Args:
+        polygon_coordinates: AOI polygon as [[lon, lat], ...] (closed ring).
+            Keep the area small for object detection - ideally < 1 km².
+            Large areas will produce very large images.
+        start_date: Earliest acceptable image date. Defaults to 5 years ago.
+        end_date: Latest acceptable image date. Defaults to today.
+        resolution: Target resolution in meters. Default 0.6m. Use 0.3m for
+            maximum detail (larger data). Must be >= 0.3.
+
+    Returns:
+        Dictionary with keys:
+            - 'rgb' (np.ndarray): H x W x 3 uint8 RGB image array, ready for
+              display or object detection model input.
+            - 'nir' (np.ndarray): H x W float32 NIR band.
+            - 'bounds' (tuple): (west, south, east, north) in EPSG:4326.
+            - 'resolution' (float): Actual resolution in meters.
+            - 'date' (str): Image capture date (ISO format).
+            - 'scene_id' (str): NAIP scene identifier.
+            - 'crs' (str): Coordinate reference system of the source data.
+
+    Example:
+        >>> result = get_high_resolution_image(
+        ...     polygon_coordinates=[
+        ...         [-77.04, 38.89], [-77.03, 38.89],
+        ...         [-77.03, 38.88], [-77.04, 38.88], [-77.04, 38.89]
+        ...     ],
+        ...     resolution=0.6
+        ... )
+        >>> rgb = result['rgb']  # shape: (H, W, 3), dtype: uint8
+        >>> print(f"Image size: {rgb.shape[1]}x{rgb.shape[0]} pixels")
+    """
+    if end_date is None:
+        end_date = datetime.today().date()
+    if start_date is None:
+        start_date = end_date - timedelta(days=5 * 365)
+
+    polygon = Polygon(polygon_coordinates)
+
+    # Search NAIP scenes (no cloud cover filter — aerial imagery)
+    client = pystac_client.Client.open(STAC_URL)
+    result = client.search(
+        collections=["naip"],
+        intersects={
+            "type": "Polygon",
+            "coordinates": [polygon_coordinates]
+        },
+        datetime=f"{start_date.isoformat()}/{end_date.isoformat()}"
+    )
+    scenes = list(result.items_as_dicts())
+    if not scenes:
+        raise ValueError(
+            "No NAIP imagery found for this area and date range. "
+            "NAIP covers the contiguous United States only."
+        )
+
+    # Select the most recent scene with best AOI coverage
+    aoi_shape = shape({"type": "Polygon", "coordinates": [polygon_coordinates]})
+    scored = []
+    for scene in scenes:
+        scene_shape = shape(scene['geometry'])
+        coverage = aoi_shape.intersection(scene_shape).area / aoi_shape.area
+        scene_date = scene['properties']['datetime']
+        scored.append((coverage, scene_date, scene))
+
+    # Sort by coverage desc, then date desc (most recent)
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    best_scene = scored[0][2]
+
+    print(f"Found {len(scenes)} NAIP scenes")
+    print(f"Selected: {best_scene['id']}")
+    print(f"  Date: {best_scene['properties']['datetime']}")
+    print(f"  GSD: {best_scene['properties'].get('gsd', 'N/A')}m")
+
+    # Load the image asset (single 4-band RGBNIR COG) using rioxarray
+    # (stackstac doesn't support multi-band assets)
+    image_href = best_scene['assets']['image']['href']
+    epsg = best_scene['properties'].get('proj:epsg')
+
+    env = rasterio.Env(AWS_REQUEST_PAYER='requester')
+    with env:
+        data = rioxarray.open_rasterio(image_href)
+
+    # Clip to AOI bounding box in the raster's native CRS, then reproject
+    data = data.rio.clip_box(*polygon.bounds, crs="EPSG:4326")
+    if resolution != data.rio.resolution()[0]:
+        data = data.rio.reproject(f"EPSG:{epsg}", resolution=resolution)
+    data = data.rio.clip(geometries=[polygon], crs="EPSG:4326", drop=False)
+    data = data.load()
+
+    # Split into RGB and NIR, normalize with percentile stretch
+    values = data.values  # shape: (4, H, W) — R, G, B, NIR
+    nir = values[3]  # (H, W)
+
+    # Valid pixel mask (not NaN / not outside polygon)
+    mask_valid = np.isfinite(values[0])
+
+    # Per-band percentile stretch for proper color rendering
+    rgb_bands = []
+    for i in range(3):
+        band = values[i]
+        valid_pixels = band[mask_valid]
+        if valid_pixels.size == 0:
+            rgb_bands.append(np.zeros_like(band, dtype=np.uint8))
+            continue
+        low = np.percentile(valid_pixels, 2)
+        high = np.percentile(valid_pixels, 98)
+        if high == low:
+            rgb_bands.append(np.zeros_like(band, dtype=np.uint8))
+            continue
+        stretched = (band.astype(np.float32) - low) / (high - low)
+        rgb_bands.append(np.clip(stretched * 255, 0, 255).astype(np.uint8))
+
+    rgb_uint8 = np.stack(rgb_bands, axis=-1)  # (H, W, 3)
+    # Set pixels outside polygon to white
+    rgb_uint8[~mask_valid] = 255
+
+    print(f"Image shape: {rgb_uint8.shape[1]}x{rgb_uint8.shape[0]} pixels at {resolution}m")
+
+    return {
+        'rgb': rgb_uint8,
+        'nir': nir.astype(np.float32),
+        'bounds': polygon.bounds,  # (west, south, east, north)
+        'resolution': resolution,
+        'date': best_scene['properties']['datetime'],
+        'scene_id': best_scene['id'],
+        'crs': f"EPSG:{epsg}",
+    }
