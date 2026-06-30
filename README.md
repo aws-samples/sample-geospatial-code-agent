@@ -225,6 +225,50 @@ aws cognito-idp admin-create-user \
 
 The user will be prompted to change their password on first login.
 
+### Optional: Object Detection Endpoint (Falcon-Perception)
+
+> **This is an optional feature.** The geospatial agent works without it. Deploy only if you need real-time object detection on satellite imagery via a SageMaker endpoint.
+
+Deploys [Falcon-Perception](https://github.com/tiiuae/Falcon-Perception) (0.6B parameter vision-language model) as a SageMaker real-time endpoint for open-vocabulary object detection and instance segmentation.
+
+#### Cost
+
+| Resource | Monthly Cost | Notes |
+|----------|-------------|-------|
+| ml.g5.xlarge instance | ~$1,030 | 24/7 single-instance endpoint (A10G, 24 GB VRAM) |
+| ECR image storage | ~$1.50 | ~15 GB container image |
+| Data transfer | ~$0 | ECR → SageMaker same-region is free |
+| **Total** | **~$1,032/month** | Scales linearly with instance count |
+
+> **Cost tip:** Delete the endpoint when not in use. You can redeploy in ~10 minutes.
+
+#### Step 1: Build the Container Image
+
+```bash
+./scripts/build-falcon-perception.sh
+```
+
+The script creates the ECR repository, S3 source bucket, and CodeBuild project (if they don't already exist), uploads the source, and triggers the build. The build takes **~10 minutes** (pulls a ~15 GB PyTorch DLC base image, installs falcon-perception, and pushes to ECR).
+
+> **Note:** The CodeBuild service role (`falcon-perception-codebuild-role`) needs permissions for ECR push (`ecr:*`), S3 read (`s3:GetObject`), STS (`sts:GetCallerIdentity`), and CloudWatch Logs. See `infrastructure/sagemaker/falcon-perception/buildspec.yml` for the exact actions performed.
+
+#### Step 2: Deploy the SageMaker Endpoint
+
+```bash
+cd infrastructure
+cdk deploy FalconPerceptionStack -c deploy_object_detection=true
+```
+
+The endpoint takes **5–10 minutes** to become `InService` (image pull + model download from HuggingFace + torch.compile + CUDA graph capture).
+
+#### Teardown
+
+```bash
+cdk destroy FalconPerceptionStack
+```
+
+> **Note:** Endpoint deletion can take up to 10 minutes due to ENI cleanup in the VPC.
+
 ## Local Development
 
 ### Run the Agent Locally

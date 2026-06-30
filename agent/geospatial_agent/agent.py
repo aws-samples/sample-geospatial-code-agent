@@ -22,7 +22,7 @@ Do NOT call fig.show() — there is no GUI.
 
 from geospatial_agent.bedrock_models import MODELS, DEFAULT_MODEL_ID, DEFAULT_TEMPERATURE
 from geospatial import (
-    get_satellite_data, get_high_resolution_image,
+    get_satellite_data, get_high_resolution_image, detect_objects,
     Index, ComputedIndex, compute_NDVI, compute_NDWI, compute_NBR, compute_dNBR,
     generate_overlay,
     convert_lwir11_to_celsius
@@ -127,7 +127,7 @@ class GeospatialAgent:
                     libraries=['PIL.*'],
                     initialization_code=INITIALIZATION_CODE.render(AOI_COORDINATES=coordinates),
                     domain_specific_code=[
-                        get_satellite_data, get_high_resolution_image,
+                        get_satellite_data, get_high_resolution_image, detect_objects,
                         Index, ComputedIndex, compute_NDVI, compute_NDWI, compute_NBR, compute_dNBR,
                         generate_overlay,
                         convert_lwir11_to_celsius

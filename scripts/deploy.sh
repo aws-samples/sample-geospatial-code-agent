@@ -13,7 +13,15 @@ UI_DIR="$SCRIPT_DIR/../user-interface"
 if [[ "$DEPLOY_CDK" == true ]]; then
     cd "$INFRA_DIR"
     echo "=== Deploying CDK stacks ==="
-    cdk deploy --all --require-approval never
+
+    # Optional: Object detection model (GPU SageMaker endpoint)
+    DEPLOY_OBJECT_DETECTION="${DEPLOY_OBJECT_DETECTION:-false}"
+    if [ -t 0 ] && [ "$DEPLOY_OBJECT_DETECTION" = "false" ]; then
+        read -p "Deploy object detection model? (ml.g5.xlarge GPU endpoint, ~\$1.41/hr) [y/N] " yn
+        [[ "$yn" =~ ^[Yy]$ ]] && DEPLOY_OBJECT_DETECTION=true
+    fi
+
+    cdk deploy --all --require-approval never -c deploy_object_detection=$DEPLOY_OBJECT_DETECTION
 else
     echo "=== Skipping CDK deployment (use --cdk to deploy) ==="
 fi

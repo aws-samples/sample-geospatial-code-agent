@@ -9,6 +9,7 @@ cdk.out/
 
 # Development
 dev/
+wiki/
 node_modules/
 evaluation/credentials.json
 
