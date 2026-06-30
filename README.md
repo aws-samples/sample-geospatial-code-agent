@@ -164,6 +164,7 @@ All infrastructure is defined in **AWS CDK** (Python). Three stacks deployed in 
 
 ```
 VPCStack → AgentCoreStack → WebAppStack
+         → FalconPerceptionStack (optional)
 ```
 
 All stacks are validated against **cdk-nag** (AWS Solutions checks).
@@ -209,6 +210,16 @@ This will:
 5. Upload the build to S3
 6. Invalidate the CloudFront cache
 
+To deploy in a specific region:
+```bash
+AWS_REGION=eu-west-2 ./scripts/deploy.sh --cdk
+```
+
+To include the optional object detection endpoint:
+```bash
+DEPLOY_OBJECT_DETECTION=true ./scripts/deploy.sh --cdk
+```
+
 To skip CDK deployment (e.g., UI-only changes):
 ```bash
 ./scripts/deploy.sh
@@ -237,29 +248,19 @@ Deploys [Falcon-Perception](https://github.com/tiiuae/Falcon-Perception) (0.6B p
 |----------|-------------|-------|
 | ml.g6.xlarge instance | ~$781 | 24/7 single-instance endpoint (L4, 24 GB VRAM) |
 | ECR image storage | ~$1.50 | ~15 GB container image |
-| Data transfer | ~$0 | ECR → SageMaker same-region is free |
 | **Total** | **~$783/month** | Only billed while the model is running |
 
 > **Cost tip:** Use `./scripts/falcon-perception-stop.sh` to scale to zero when not in use. GPU billing stops within minutes. Restart in ~5-8 minutes with `./scripts/falcon-perception-start.sh`.
 
-#### Step 1: Build the Container Image
+#### Deploy
 
 ```bash
-./scripts/build-falcon-perception.sh
-```
-
-The script creates the ECR repository, S3 source bucket, and CodeBuild project (if they don't already exist), uploads the source, and triggers the build. The build takes **~10 minutes** (pulls a ~15 GB PyTorch DLC base image, installs falcon-perception, and pushes to ECR).
-
-> **Note:** The CodeBuild service role (`falcon-perception-codebuild-role`) needs permissions for ECR push (`ecr:*`), S3 read (`s3:GetObject`), STS (`sts:GetCallerIdentity`), and CloudWatch Logs. See `infrastructure/sagemaker/falcon-perception/buildspec.yml` for the exact actions performed.
-
-#### Step 2: Deploy the SageMaker Endpoint
-
-```bash
-cd infrastructure
 cdk deploy FalconPerceptionStack -c deploy_object_detection=true
 ```
 
-The endpoint takes **5–10 minutes** to become `InService` (image pull + model download from HuggingFace + torch.compile + CUDA graph capture).
+This single command builds the container image via CodeBuild (~10 min), creates the SageMaker endpoint, and deploys the inference component. The container build is triggered automatically whenever the source files change (`infrastructure/sagemaker/falcon-perception/`).
+
+The endpoint takes **5–10 minutes** to become `InService` after the image is built (model download from HuggingFace + torch.compile + CUDA graph capture).
 
 #### Start / Stop the Endpoint
 
@@ -284,8 +285,6 @@ To fully remove the endpoint and all associated resources:
 ```bash
 cdk destroy FalconPerceptionStack
 ```
-
-> **Note:** Endpoint deletion can take up to 10 minutes due to ENI cleanup in the VPC.
 
 ## Local Development
 
