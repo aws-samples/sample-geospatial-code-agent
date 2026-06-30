@@ -12,6 +12,7 @@ import numpy as np
 OBJECT_DETECTION_BACKEND = os.environ.get("OBJECT_DETECTION_BACKEND", "sagemaker")
 
 ENDPOINT_NAME = os.environ.get("OBJECT_DETECTION_ENDPOINT_NAME", "falcon-perception-object-detection")
+INFERENCE_COMPONENT_NAME = os.environ.get("OBJECT_DETECTION_INFERENCE_COMPONENT_NAME", "falcon-perception-model")
 EC2_ENDPOINT_URL = os.environ.get("OBJECT_DETECTION_EC2_URL", "http://localhost:18080")
 
 
@@ -19,6 +20,7 @@ def _invoke_sagemaker(payload: str) -> list[dict]:
     sagemaker_runtime = boto3.client("sagemaker-runtime")
     response = sagemaker_runtime.invoke_endpoint(
         EndpointName=ENDPOINT_NAME,
+        InferenceComponentName=INFERENCE_COMPONENT_NAME,
         ContentType="application/json",
         Body=payload,
     )

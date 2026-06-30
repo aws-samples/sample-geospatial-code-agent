@@ -17,7 +17,7 @@ if [[ "$DEPLOY_CDK" == true ]]; then
     # Optional: Object detection model (GPU SageMaker endpoint)
     DEPLOY_OBJECT_DETECTION="${DEPLOY_OBJECT_DETECTION:-false}"
     if [ -t 0 ] && [ "$DEPLOY_OBJECT_DETECTION" = "false" ]; then
-        read -p "Deploy object detection model? (ml.g5.xlarge GPU endpoint, ~\$1.41/hr) [y/N] " yn
+        read -p "Deploy object detection model? (ml.g6.xlarge GPU endpoint, ~\$1.07/hr) [y/N] " yn
         [[ "$yn" =~ ^[Yy]$ ]] && DEPLOY_OBJECT_DETECTION=true
     fi
 
@@ -29,9 +29,14 @@ fi
 cd "$SCRIPT_DIR/.."
 
 # Get outputs from CloudFormation
-STACK_NAME="GeospatialWebAppStack"
+REGION="${AWS_REGION:-${CDK_DEFAULT_REGION:-us-east-1}}"
+if [ "$REGION" != "us-east-1" ]; then
+    STACK_NAME="GeospatialWebAppStack-${REGION}"
+else
+    STACK_NAME="GeospatialWebAppStack"
+fi
 get_output() {
-    aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
+    aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
 }
 
 BUCKET_NAME=$(get_output "ReactUIBucketName")

@@ -124,7 +124,7 @@ class GeospatialAgent:
             toolkits=[
                 VISUALIZATION_TOOLKIT, DATA_ANALYSIS_TOOLKIT, PLOTLY_TOOLKIT,
                 Toolkit(
-                    libraries=['PIL.*'],
+                    libraries=['PIL.*', 'pycocotools.*'],
                     initialization_code=INITIALIZATION_CODE.render(AOI_COORDINATES=coordinates),
                     domain_specific_code=[
                         get_satellite_data, get_high_resolution_image, detect_objects,

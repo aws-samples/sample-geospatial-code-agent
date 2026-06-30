@@ -235,12 +235,12 @@ Deploys [Falcon-Perception](https://github.com/tiiuae/Falcon-Perception) (0.6B p
 
 | Resource | Monthly Cost | Notes |
 |----------|-------------|-------|
-| ml.g5.xlarge instance | ~$1,030 | 24/7 single-instance endpoint (A10G, 24 GB VRAM) |
+| ml.g6.xlarge instance | ~$781 | 24/7 single-instance endpoint (L4, 24 GB VRAM) |
 | ECR image storage | ~$1.50 | ~15 GB container image |
 | Data transfer | ~$0 | ECR → SageMaker same-region is free |
-| **Total** | **~$1,032/month** | Scales linearly with instance count |
+| **Total** | **~$783/month** | Only billed while the model is running |
 
-> **Cost tip:** Delete the endpoint when not in use. You can redeploy in ~10 minutes.
+> **Cost tip:** Use `./scripts/falcon-perception-stop.sh` to scale to zero when not in use. GPU billing stops within minutes. Restart in ~5-8 minutes with `./scripts/falcon-perception-start.sh`.
 
 #### Step 1: Build the Container Image
 
@@ -261,7 +261,25 @@ cdk deploy FalconPerceptionStack -c deploy_object_detection=true
 
 The endpoint takes **5–10 minutes** to become `InService` (image pull + model download from HuggingFace + torch.compile + CUDA graph capture).
 
+#### Start / Stop the Endpoint
+
+The endpoint uses SageMaker Inference Components with managed instance scaling (min=0), allowing you to scale down to zero instances without destroying the stack.
+
+**Stop** (scales to zero — GPU billing stops within minutes):
+```bash
+./scripts/falcon-perception-stop.sh
+```
+
+**Start** (provisions instance + loads model — ~5-8 minutes):
+```bash
+./scripts/falcon-perception-start.sh --wait
+```
+
+The `--wait` flag polls until the endpoint is `InService`. Without it, the script returns immediately after requesting the scale-up.
+
 #### Teardown
+
+To fully remove the endpoint and all associated resources:
 
 ```bash
 cdk destroy FalconPerceptionStack
