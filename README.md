@@ -244,13 +244,12 @@ Deploys [Falcon-Perception](https://github.com/tiiuae/Falcon-Perception) (0.6B p
 
 #### Cost
 
-| Resource | Monthly Cost | Notes |
-|----------|-------------|-------|
-| ml.g6.xlarge instance | ~$781 | 24/7 single-instance endpoint (L4, 24 GB VRAM) |
-| ECR image storage | ~$1.50 | ~15 GB container image |
-| **Total** | **~$783/month** | Only billed while the model is running |
+| Resource | Cost | Notes |
+|----------|------|-------|
+| ml.g6e.xlarge instance | ~$2.61/hour | L40S GPU, 48 GB VRAM — billed only while running |
+| ECR image storage | ~$1.50/month | ~15 GB container image |
 
-> **Cost tip:** Use `./scripts/falcon-perception-stop.sh` to scale to zero when not in use. GPU billing stops within minutes. Restart in ~5-8 minutes with `./scripts/falcon-perception-start.sh`.
+> **Cost tip:** The endpoint automatically scales to zero after 60 minutes of inactivity — GPU billing stops once the instance is released. You only pay for the hours the model is actively serving requests. When a user invokes object detection while scaled to zero, the endpoint automatically provisions an instance (~5-8 minutes cold start). During cold start, the agent informs the user to retry shortly.
 
 #### Deploy
 
@@ -262,21 +261,14 @@ This single command builds the container image via CodeBuild (~10 min), creates 
 
 The endpoint takes **5–10 minutes** to become `InService` after the image is built (model download from HuggingFace + torch.compile + CUDA graph capture).
 
-#### Start / Stop the Endpoint
+#### Auto Scaling Behavior
 
-The endpoint uses SageMaker Inference Components with managed instance scaling (min=0), allowing you to scale down to zero instances without destroying the stack.
+The endpoint uses Application Auto Scaling for fully automatic scale-to-zero:
 
-**Stop** (scales to zero — GPU billing stops within minutes):
-```bash
-./scripts/falcon-perception-stop.sh
-```
+- **Scale to zero**: After 60 minutes of no invocations, the endpoint releases its GPU instance — billing stops.
+- **Scale from zero**: When a user invokes object detection while scaled to zero, a CloudWatch alarm triggers automatic instance provisioning (~5-8 minutes cold start). The agent catches the cold-start error and advises the user to retry shortly.
 
-**Start** (provisions instance + loads model — ~5-8 minutes):
-```bash
-./scripts/falcon-perception-start.sh --wait
-```
-
-The `--wait` flag polls until the endpoint is `InService`. Without it, the script returns immediately after requesting the scale-up.
+No manual intervention is needed — the endpoint is self-managing.
 
 #### Teardown
 

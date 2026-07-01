@@ -16,14 +16,41 @@ INFERENCE_COMPONENT_NAME = os.environ.get("OBJECT_DETECTION_INFERENCE_COMPONENT_
 EC2_ENDPOINT_URL = os.environ.get("OBJECT_DETECTION_EC2_URL", "http://localhost:18080")
 
 
+COLD_START_MESSAGE = (
+    "The object detection model is currently scaled to zero and is starting up. "
+    "This happens automatically after 60 minutes of inactivity. "
+    "Please retry in 5-8 minutes while the GPU instance provisions and the model loads."
+)
+
+
+class EndpointColdStartError(Exception):
+    """Raised when the SageMaker endpoint is scaled to zero and needs time to start."""
+    pass
+
+
 def _invoke_sagemaker(payload: str) -> list[dict]:
     sagemaker_runtime = boto3.client("sagemaker-runtime")
-    response = sagemaker_runtime.invoke_endpoint(
-        EndpointName=ENDPOINT_NAME,
-        InferenceComponentName=INFERENCE_COMPONENT_NAME,
-        ContentType="application/json",
-        Body=payload,
-    )
+    try:
+        response = sagemaker_runtime.invoke_endpoint(
+            EndpointName=ENDPOINT_NAME,
+            InferenceComponentName=INFERENCE_COMPONENT_NAME,
+            ContentType="application/json",
+            Body=payload,
+        )
+    except sagemaker_runtime.exceptions.ModelNotReadyException:
+        raise EndpointColdStartError(COLD_START_MESSAGE)
+    except Exception as e:
+        error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "")
+        error_msg = str(e).lower()
+        # ValidationError/ValidationException with capacity messages indicates scale-to-zero
+        if error_code in ("ValidationException", "ValidationError") and (
+            "no capacity" in error_msg
+            or "no instances" in error_msg
+            or "capacity" in error_msg
+            or "unable to invoke" in error_msg
+        ):
+            raise EndpointColdStartError(COLD_START_MESSAGE)
+        raise
     return json.loads(response["Body"].read())
 
 
@@ -84,7 +111,11 @@ def detect_objects(
     if OBJECT_DETECTION_BACKEND == "ec2":
         preds = _invoke_ec2(payload)
     else:
-        preds = _invoke_sagemaker(payload)
+        try:
+            preds = _invoke_sagemaker(payload)
+        except EndpointColdStartError as e:
+            # Surface the cold-start message to the agent/user
+            raise RuntimeError(str(e)) from None
 
     # Convert normalized coords to pixel coords and decode masks
     detections = []

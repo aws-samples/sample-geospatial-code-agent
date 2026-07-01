@@ -1,10 +1,12 @@
 import hashlib
 
 from aws_cdk import (
-    Stack, CfnOutput, Duration, CustomResource,
+    Stack, CfnOutput, Duration, CustomResource, RemovalPolicy,
     aws_ecr as ecr, aws_iam as iam, aws_sagemaker as sagemaker,
     aws_ec2 as ec2, aws_codebuild as codebuild, aws_s3_assets as s3_assets,
     aws_lambda as _lambda, aws_kms as kms,
+    aws_applicationautoscaling as appscaling,
+    aws_cloudwatch as cloudwatch,
 )
 from constructs import Construct
 from cdk_nag import NagSuppressions
@@ -16,10 +18,12 @@ class FalconPerceptionStack(Stack):
     Includes a CodeBuild pipeline that builds the container image automatically
     when the source changes (Dockerfile, handler.py, buildspec.yml).
 
-    Uses Inference Components with ManagedInstanceScaling (min=0) to enable
-    scale-to-zero. Use the start/stop scripts to control the endpoint:
-        ./scripts/falcon-perception-start.sh  (sets desired copies to 1)
-        ./scripts/falcon-perception-stop.sh   (sets desired copies to 0)
+    Uses Inference Components with ManagedInstanceScaling (min=0) and
+    Application Auto Scaling for fully automatic scale-to-zero:
+        - Scales IN to 0 after 60 minutes of no invocations
+        - Scales OUT from 0 automatically when an invocation is attempted
+          (triggered by NoCapacityInvocationFailures CloudWatch metric)
+        - Cold start takes ~5-8 minutes (instance provisioning + model load)
     """
 
     ENDPOINT_NAME = "falcon-perception-object-detection"
@@ -31,16 +35,18 @@ class FalconPerceptionStack(Stack):
 
         # ===== Container Image Build Pipeline =====
 
-        # ECR repository — look up existing repo (created on first deploy via build script or prior stack)
-        # The repo persists across stack deletions to preserve built images.
-        repo = ecr.Repository.from_repository_name(self, "Repo", self.ECR_REPO_NAME)
+        # ECR repository — created automatically on first deploy, retained on stack deletion
+        # to preserve built images across redeployments.
+        repo = ecr.Repository(self, "Repo",
+            repository_name=self.ECR_REPO_NAME,
+            removal_policy=RemovalPolicy.RETAIN,
+            empty_on_delete=False,
+        )
 
-        # Source asset (Dockerfile + handler.py + buildspec.yml)
         source_asset = s3_assets.Asset(self, "SourceAsset",
             path="sagemaker/falcon-perception"
         )
 
-        # CodeBuild IAM role
         codebuild_role = iam.Role(self, "CodeBuildRole",
             assumed_by=iam.ServicePrincipal("codebuild.amazonaws.com"),
             inline_policies={
@@ -85,7 +91,6 @@ class FalconPerceptionStack(Stack):
             description="KMS key for Falcon-Perception CodeBuild project encryption"
         )
 
-        # CodeBuild project — x86_64 (GPU instances are x86), LARGE for Docker builds
         build_project = codebuild.Project(self, "ImageBuildProject",
             project_name=f"falcon-perception-build-{self.region}",
             description="Build Falcon-Perception inference container image",
@@ -138,7 +143,7 @@ class FalconPerceptionStack(Stack):
             [{"id": "AwsSolutions-IAM5", "reason": "CDK grants S3 read permissions for CodeBuild source bucket access"}]
         )
 
-        # Lambda to trigger CodeBuild (reuses the same Lambda from AgentCore)
+        # Lambda to trigger CodeBuild
         build_trigger_role = iam.Role(self, "BuildTriggerRole",
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
         )
@@ -173,15 +178,12 @@ class FalconPerceptionStack(Stack):
 
         # ===== SageMaker Endpoint =====
 
-        # SageMaker execution role
         sm_role = iam.Role(self, "SageMakerRole", assumed_by=iam.ServicePrincipal("sagemaker.amazonaws.com"))
         sm_role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSageMakerFullAccess"))
         repo.grant_pull(sm_role)
 
-        # Security group
         endpoint_sg = ec2.SecurityGroup(self, "EndpointSG", vpc=vpc, description="Falcon-Perception endpoint SG")
 
-        # SageMaker Model (weights downloaded at container startup from HuggingFace)
         model = sagemaker.CfnModel(self, "Model",
             model_name="falcon-perception",
             execution_role_arn=sm_role.role_arn,
@@ -193,13 +195,11 @@ class FalconPerceptionStack(Stack):
                 subnets=vpc.select_subnets(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS).subnet_ids
             )
         )
-        model.node.add_dependency(trigger_build)  # Ensure image exists before creating model
+        model.node.add_dependency(trigger_build)
 
-        # Endpoint config — no model_name on the variant (model is on the InferenceComponent).
-        # ManagedInstanceScaling with min=0 enables scale-to-zero.
-        # ml.g6.xlarge: L4 GPU, 24GB VRAM, Ada Lovelace architecture.
+        # Endpoint config — ManagedInstanceScaling min=0 enables scale-to-zero.
+        # ml.g6e.xlarge: L40S GPU, 48GB VRAM — handles large input images without OOM.
         endpoint_config = sagemaker.CfnEndpointConfig(self, "EndpointConfig",
-            endpoint_config_name="falcon-perception-endpoint-config",
             execution_role_arn=sm_role.role_arn,
             vpc_config=sagemaker.CfnEndpointConfig.VpcConfigProperty(
                 security_group_ids=[endpoint_sg.security_group_id],
@@ -207,7 +207,7 @@ class FalconPerceptionStack(Stack):
             ),
             production_variants=[sagemaker.CfnEndpointConfig.ProductionVariantProperty(
                 variant_name="primary",
-                instance_type="ml.g6.xlarge",
+                instance_type="ml.g6e.xlarge",
                 initial_instance_count=1,
                 managed_instance_scaling=sagemaker.CfnEndpointConfig.ManagedInstanceScalingProperty(
                     min_instance_count=0,
@@ -217,23 +217,20 @@ class FalconPerceptionStack(Stack):
                 routing_config=sagemaker.CfnEndpointConfig.RoutingConfigProperty(
                     routing_strategy="LEAST_OUTSTANDING_REQUESTS",
                 ),
-                # Container takes ~5-8 min to start (model download + torch.compile + CUDA graphs)
                 container_startup_health_check_timeout_in_seconds=600,
                 model_data_download_timeout_in_seconds=600,
             )]
         )
         endpoint_config.node.add_dependency(sm_role)
 
-        # Endpoint
         self.endpoint_name = self.ENDPOINT_NAME
         endpoint = sagemaker.CfnEndpoint(self, "Endpoint",
             endpoint_name=self.endpoint_name,
-            endpoint_config_name=endpoint_config.endpoint_config_name,
+            endpoint_config_name=endpoint_config.attr_endpoint_config_name,
         )
         endpoint.add_dependency(endpoint_config)
 
-        # Inference Component — associates the model with the endpoint and defines
-        # resource requirements. copy_count=1 starts with one active copy.
+        # Inference Component — required for scale-to-zero support.
         inference_component = sagemaker.CfnInferenceComponent(self, "InferenceComponent",
             endpoint_name=self.endpoint_name,
             inference_component_name=self.INFERENCE_COMPONENT_NAME,
@@ -242,7 +239,7 @@ class FalconPerceptionStack(Stack):
                 model_name=model.model_name,
                 compute_resource_requirements=sagemaker.CfnInferenceComponent.InferenceComponentComputeResourceRequirementsProperty(
                     number_of_accelerator_devices_required=1,
-                    min_memory_required_in_mb=512,  # Must be 300-1024 on 16 GiB instances (g5/g6.xlarge)
+                    min_memory_required_in_mb=512,
                 ),
                 startup_parameters=sagemaker.CfnInferenceComponent.InferenceComponentStartupParametersProperty(
                     container_startup_health_check_timeout_in_seconds=600,
@@ -256,10 +253,117 @@ class FalconPerceptionStack(Stack):
         inference_component.add_dependency(endpoint)
         inference_component.add_dependency(model)
 
+        # ===== Application Auto Scaling =====
+        # Enables fully automatic scale-to-zero and scale-from-zero.
+        # No manual start/stop scripts needed.
+        #
+        # Strategy: Two step scaling policies (no target tracking).
+        # - Scale OUT: Triggered by NoCapacityInvocationFailures (instant wake-up)
+        # - Scale IN:  Triggered after 60 consecutive minutes of zero invocations
+
+        # Register inference component as a scalable target (min=0, max=1)
+        scalable_target = appscaling.CfnScalableTarget(self, "ScalableTarget",
+            service_namespace="sagemaker",
+            resource_id=f"inference-component/{self.INFERENCE_COMPONENT_NAME}",
+            scalable_dimension="sagemaker:inference-component:DesiredCopyCount",
+            min_capacity=0,
+            max_capacity=1,
+            role_arn=sm_role.role_arn,
+        )
+        scalable_target.node.add_dependency(inference_component)
+
+        # Step scaling policy for SCALE-IN — reduces copies to 0.
+        # Only triggered after 60 consecutive minutes of zero invocations.
+        scale_in_policy = appscaling.CfnScalingPolicy(self, "ScaleInStepPolicy",
+            policy_name="falcon-perception-scale-in-after-idle",
+            policy_type="StepScaling",
+            service_namespace="sagemaker",
+            resource_id=f"inference-component/{self.INFERENCE_COMPONENT_NAME}",
+            scalable_dimension="sagemaker:inference-component:DesiredCopyCount",
+            step_scaling_policy_configuration=appscaling.CfnScalingPolicy.StepScalingPolicyConfigurationProperty(
+                adjustment_type="ExactCapacity",
+                metric_aggregation_type="Average",
+                cooldown=3600,
+                step_adjustments=[
+                    appscaling.CfnScalingPolicy.StepAdjustmentProperty(
+                        metric_interval_upper_bound=0,
+                        scaling_adjustment=0,  # Set to exactly 0 copies
+                    )
+                ],
+            ),
+        )
+        scale_in_policy.node.add_dependency(scalable_target)
+
+        # CloudWatch alarm for scale-in — requires 60 consecutive 1-minute periods
+        # with zero invocations before triggering. This ensures the endpoint
+        # stays up for at least 60 minutes after last use.
+        cloudwatch.CfnAlarm(self, "IdleScaleInAlarm",
+            alarm_name="falcon-perception-idle-60min",
+            alarm_description="Triggers scale-in after 60 minutes of zero invocations",
+            alarm_actions=[scale_in_policy.ref],
+            namespace="AWS/SageMaker",
+            metric_name="Invocations",
+            dimensions=[cloudwatch.CfnAlarm.DimensionProperty(
+                name="InferenceComponentName",
+                value=self.INFERENCE_COMPONENT_NAME,
+            )],
+            statistic="Sum",
+            period=60,              # 1-minute periods
+            evaluation_periods=60,  # 60 periods = 60 minutes
+            datapoints_to_alarm=60, # All 60 must be below threshold
+            comparison_operator="LessThanOrEqualToThreshold",
+            threshold=0,
+            treat_missing_data="notBreaching",  # No data (e.g., during cold start) = not idle
+        )
+
+        # Step scaling policy for SCALE-OUT from zero — provisions an instance
+        # when an invocation fails due to no capacity.
+        scale_out_policy = appscaling.CfnScalingPolicy(self, "ScaleOutPolicy",
+            policy_name="falcon-perception-scale-out-from-zero",
+            policy_type="StepScaling",
+            service_namespace="sagemaker",
+            resource_id=f"inference-component/{self.INFERENCE_COMPONENT_NAME}",
+            scalable_dimension="sagemaker:inference-component:DesiredCopyCount",
+            step_scaling_policy_configuration=appscaling.CfnScalingPolicy.StepScalingPolicyConfigurationProperty(
+                adjustment_type="ChangeInCapacity",
+                metric_aggregation_type="Maximum",
+                cooldown=60,
+                step_adjustments=[
+                    appscaling.CfnScalingPolicy.StepAdjustmentProperty(
+                        metric_interval_lower_bound=0,
+                        scaling_adjustment=1,
+                    )
+                ],
+            ),
+        )
+        scale_out_policy.node.add_dependency(scalable_target)
+
+        # CloudWatch alarm for scale-out — fires when the endpoint receives an
+        # invocation but has no instances to serve it.
+        cloudwatch.CfnAlarm(self, "NoCapacityAlarm",
+            alarm_name="falcon-perception-no-capacity",
+            alarm_description="Triggers scale-out when endpoint is invoked with 0 instances",
+            alarm_actions=[scale_out_policy.ref],
+            namespace="AWS/SageMaker",
+            metric_name="NoCapacityInvocationFailures",
+            dimensions=[cloudwatch.CfnAlarm.DimensionProperty(
+                name="InferenceComponentName",
+                value=self.INFERENCE_COMPONENT_NAME,
+            )],
+            statistic="Sum",
+            period=60,
+            evaluation_periods=1,
+            datapoints_to_alarm=1,
+            comparison_operator="GreaterThanThreshold",
+            threshold=0,
+            treat_missing_data="notBreaching",
+        )
+
+        # ===== Outputs =====
         CfnOutput(self, "EndpointName", value=self.endpoint_name)
         CfnOutput(self, "InferenceComponentName", value=self.INFERENCE_COMPONENT_NAME)
 
-        # Nag suppressions
+        # ===== Nag Suppressions =====
         NagSuppressions.add_resource_suppressions(sm_role,
             [
                 {"id": "AwsSolutions-IAM4", "reason": "SageMaker managed policy required for endpoint operation"},
