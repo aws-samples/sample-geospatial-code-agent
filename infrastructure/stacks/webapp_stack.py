@@ -22,8 +22,9 @@ class WebAppStack(Stack):
         prefix = "GeospatialAgentWebApp"
 
         # Create Cognito user pool
-        user_pool = cognito.UserPool(self, 
+        user_pool = cognito.UserPool(self,
             f"{prefix}UserPool",
+            feature_plan=cognito.FeaturePlan.LITE,
             password_policy=cognito.PasswordPolicy(
                 min_length=8,
                 require_digits=True,
@@ -35,7 +36,10 @@ class WebAppStack(Stack):
 
         NagSuppressions.add_resource_suppressions(
             user_pool,
-            [{"id": "AwsSolutions-COG3", "reason": "Advanced Security requires Cognito Plus feature plan. We do not use Advanced Security for this sample code."}]
+            [
+                {"id": "AwsSolutions-COG3", "reason": "Advanced Security requires Cognito Plus feature plan. We do not use Advanced Security for this sample code."},
+                {"id": "AwsSolutions-COG8", "reason": "The Plus feature plan is not required for this sample code. We intentionally use the Lite feature plan to keep costs low."},
+            ]
         )
 
         user_pool_client_static_ui = cognito.UserPoolClient(self,

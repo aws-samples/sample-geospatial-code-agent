@@ -1,3 +1,4 @@
+import solution_user_agent  # noqa: F401 - registers the AWS Solutions user-agent hook; import first
 import boto3
 import json
 import logging

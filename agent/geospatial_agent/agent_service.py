@@ -1,3 +1,4 @@
+from geospatial_agent import solution_user_agent  # noqa: F401 - registers the AWS Solutions user-agent hook; import first
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
 

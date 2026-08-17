@@ -45,6 +45,7 @@ export async function* streamAgentInvoke(
     const client = new BedrockAgentCoreClient({
       region: REGION,
       credentials: session.credentials,
+      customUserAgent: [['AWSSOLUTION/SO0355', 'v0.1.0']],
     });
 
     const command = new InvokeAgentRuntimeCommand({

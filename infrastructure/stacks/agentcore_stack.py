@@ -22,6 +22,8 @@ from aws_cdk import (
 from constructs import Construct
 from cdk_nag import NagSuppressions
 
+from stacks.solution import SOLUTION_USER_AGENT
+
 class AgentCoreStack(Stack):
     """Stack for AgentCore runtime infrastructure"""
 
@@ -242,6 +244,7 @@ class AgentCoreStack(Stack):
             timeout=Duration.minutes(15),
             code=_lambda.Code.from_asset("lambda/func_build_trigger"),
             role=build_trigger_role,
+            environment={"USER_AGENT_STRING": SOLUTION_USER_AGENT},
         )
 
         NagSuppressions.add_resource_suppressions(
@@ -474,6 +477,7 @@ class AgentCoreStack(Stack):
                 "VERSION_HASH": source_hash,
                 "CLIENT_FILE_SHARING_BUCKET_NAME": self.client_file_sharing_bucket.bucket_name,
                 "PLACE_INDEX_NAME": place_index.index_name,
+                "USER_AGENT_STRING": SOLUTION_USER_AGENT,
             },
         )
 
