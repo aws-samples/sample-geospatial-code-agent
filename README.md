@@ -2,6 +2,8 @@
 
 An AI-powered geospatial analysis agent that enables natural language interaction with satellite imagery. Users draw a polygon on a map, ask a question (e.g., "What is the NDVI in this area?"), and the agent autonomously writes and executes Python code to fetch satellite data, run analyses, and return results — including images, statistics, and map overlays.
 
+[See Blog Post: From Polygon to Insight: Building an Open-Source Geospatial AI Agent on AWS](https://builder.aws.com/content/3GXHeJ8OmdUtoNgaE3Mf65VoyJr/from-polygon-to-insight-building-an-open-source-geospatial-ai-agent-on-aws)
+
 [![Demo Video](https://img.youtube.com/vi/Q5G0DdFtpTo/maxresdefault.jpg)](https://youtu.be/Q5G0DdFtpTo)
 
 This is a [Code Agent](#the-coding-agent) providing better accuracy, higher speed, and lower cost compared to a traditional tool-invoking agent.
