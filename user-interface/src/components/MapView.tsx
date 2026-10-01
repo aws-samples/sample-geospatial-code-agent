@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+
+// maplibre-gl v6 is ESM-only and loads its web worker from a separate file at
+// runtime. Bundlers (Vite) can't rewrite that internal URL, so the worker must
+// be registered once before any map is created or tiles 404 at runtime. The
+// `?worker&url` suffix makes Vite emit the bundled worker and hand back its URL.
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 import type { ImageOverlay } from '../types';
 import {
   formatLayerDisplayText,
@@ -291,8 +298,10 @@ export function MapView({ onDrawnGeometry, onDrawCleared, imageOverlays, resetTr
 
     map.current.addControl(draw.current as any);
 
-    // Listen for draw events
-      map.current.on('draw.create', (e) => {
+    // Listen for draw events. These are custom events emitted by
+    // @mapbox/mapbox-gl-draw; maplibre-gl v6's typed `on()` overloads only
+    // accept known MapEventType keys, so cast the event name to satisfy TS.
+      map.current.on('draw.create' as any, () => {
         setHasDrawnFeatures(true);
         // Auto-send the drawn geometry
         if (draw.current && onDrawnGeometry) {
@@ -313,12 +322,12 @@ export function MapView({ onDrawnGeometry, onDrawCleared, imageOverlays, resetTr
       });
 
 
-    map.current.on('draw.delete', () => {
+    map.current.on('draw.delete' as any, () => {
       const data = draw.current?.getAll();
       setHasDrawnFeatures(data ? data.features.length > 0 : false);
     });
 
-    map.current.on('draw.update', () => {
+    map.current.on('draw.update' as any, () => {
       setHasDrawnFeatures(true);
     });
 
