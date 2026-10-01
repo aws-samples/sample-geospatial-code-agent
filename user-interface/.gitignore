@@ -17,6 +17,10 @@ tsconfig.tsbuildinfo
 
 # misc
 .DS_Store
+
+# generated: copied from node_modules/plotly.js at predev/prebuild (scripts/copy-plotly.mjs)
+public/plotly.min.js
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

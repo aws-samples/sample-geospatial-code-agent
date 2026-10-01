@@ -282,6 +282,7 @@ cdk destroy FalconPerceptionStack
 
 ### Run the Agent Locally
 ```bash
+cd agent
 python -m geospatial_agent.agent_service
 ```
 Starts the agent on `http://localhost:8080`. Requires AWS credentials configured for Bedrock, S3, etc.
