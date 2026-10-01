@@ -12,7 +12,7 @@
     "@mapbox/mapbox-gl-draw": "^1.5.1",
     "aws-amplify": "^6.15.10",
     "maplibre-gl": "6.4.1",
-    "plotly.js": "^3.0.0",
+    "plotly.js": "^4.1.1",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-markdown": "^10.1.0",
