@@ -20,6 +20,7 @@ For a traditional tool-invoking Geospatial Agent solution, you can use: https://
 6. [Infrastructure](#infrastructure)
 7. [Deployment](#deployment)
 8. [Local Development](#local-development)
+   - [Continuous Integration](#continuous-integration)
 9. [Evaluation](#evaluation)
 10. [Extending the Agent](#extending-the-agent)
 
@@ -302,6 +303,32 @@ Connecting to a local agent on localhost:
 ```
 
 The script retrieves configuration from CloudFormation, generates `.env.local`, and starts the dev server. Infrastructure must be deployed first.
+
+### Continuous Integration
+
+The [CI workflow](.github/workflows/ci.yml) runs on every pull request (including Dependabot security updates) and on pushes to `main`. It needs no AWS account, secrets or internet services: AWS is emulated with [moto](https://github.com/getmoto/moto) and in-test fakes, satellite imagery is served by a local STAC API over synthetic GeoTIFFs, map tiles are faked, and the LLM is replaced by a scripted model, so the real agent and UI code paths run deterministically.
+
+| Job | What it checks |
+| --- | --- |
+| UI - type-check & build | `tsc` on the web app and the e2e tests, and `vite build` |
+| Agent - dependencies & service tests | pinned `agent/requirements.txt` resolves; the geospatial library (STAC search, scene selection, COG loading, spectral indices, thermal, overlays, geocoding) and the agent service streaming a full NDVI analysis over `/invocations` |
+| Agent - container image (ARM64) | the AgentCore image builds and imports its runtime dependencies |
+| E2E - UI (Playwright) & full stack | the built UI: MapLibre map and polygon drawing, Cognito sign-in and password change, SigV4-signed AgentCore invocation, rendering of every agent event (code, output, images, map overlay, Plotly chart, shared file, metrics, errors), and a full-stack run against the real agent service |
+| Infrastructure - CDK synth & cdk-nag | all stacks (with and without the object detection stack) synthesize and pass the `AwsSolutions` checks |
+
+Use the `CI status` check as the required status check in the branch protection rules. To run the checks locally:
+```bash
+# Agent tests
+cd agent
+pip install -r requirements.txt -r requirements-test.txt
+python -m pytest
+
+# UI type-check, build and end-to-end tests (add E2E_AGENT_PYTHON for the full-stack test)
+cd user-interface
+npm ci && npm run typecheck && npm run build
+npx playwright install chromium
+E2E_AGENT_PYTHON=$(which python) npm run test:e2e
+```
 
 ## Evaluation
 

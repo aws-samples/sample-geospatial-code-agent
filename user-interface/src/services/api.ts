@@ -28,6 +28,9 @@ export async function* streamAgentInvoke(
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
+        // Same header InvokeAgentRuntime sets: the agent reads the session ID from it
+        // (e.g. to scope the S3 keys of files shared with the client).
+        'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id': sessionId,
       },
       body: JSON.stringify({
         ...payload,

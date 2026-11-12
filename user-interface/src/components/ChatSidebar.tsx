@@ -168,6 +168,14 @@ export function ChatSidebar({
             content: textContent
           }]);
 
+        } else if (event.type === 'error') {
+          // Errors raised by the agent service (e.g. model failures) are streamed as events.
+          const errorContent = event.content || 'Unknown error';
+          setMessages((prev) => [...prev, {
+            role: 'assistant' as const,
+            content: `Error: ${errorContent}`
+          }]);
+
         }
       }
       

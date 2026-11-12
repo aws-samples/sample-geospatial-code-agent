@@ -102,6 +102,26 @@ def share_file_with_client(file_path: str):
 
 # UI tools used to communicate with the client application, and not providing an actual response.
 UI_TOOLS = {'visualize_image', 'visualize_map_raster_layer', 'visualize_interactive_chart'}
+# Tools whose input is a file written by the agent's code (read when streaming the event to the client).
+FILE_TOOLS = UI_TOOLS | {'share_file_with_client'}
+
+# Geospatial libraries installed in the agent image that the agent's code may import.
+GEOSPATIAL_LIBRARIES = [
+    'shapely.*', 'pyproj.*', 'geopandas.*',
+    'xarray.*', 'rioxarray.*', 'rasterio.*', 'rio_tiler.*',
+    'pystac.*', 'pystac_client.*', 'stackstac.*',
+]
+
+
+def model_config(model_id, temperature=DEFAULT_TEMPERATURE):
+    """BedrockModel arguments for `model_id`.
+
+    Some models (e.g. Claude 5.5) reject `temperature`: only send it when supported.
+    """
+    config = {'model_id': model_id}
+    if MODELS[model_id].get('supports_temperature', True) and temperature is not None:
+        config['temperature'] = temperature
+    return config
 
 
 class GeospatialAgent:
@@ -109,6 +129,7 @@ class GeospatialAgent:
         self.session_id = session_id
         self.cost = MODELS[model_id]['cost']
         self.tool_uses = {}
+        self.pending_file_tools = {}
 
         messages = []
         if history is not None:
@@ -124,7 +145,7 @@ class GeospatialAgent:
             toolkits=[
                 VISUALIZATION_TOOLKIT, DATA_ANALYSIS_TOOLKIT, PLOTLY_TOOLKIT,
                 Toolkit(
-                    libraries=['PIL.*', 'pycocotools.*'],
+                    libraries=['PIL.*', 'pycocotools.*', *GEOSPATIAL_LIBRARIES],
                     initialization_code=INITIALIZATION_CODE.render(AOI_COORDINATES=coordinates),
                     domain_specific_code=[
                         get_satellite_data, get_high_resolution_image, detect_objects,
@@ -134,10 +155,7 @@ class GeospatialAgent:
                     ],
                 ),
             ],
-            model=BedrockModel(
-                model_id=model_id,
-                temperature=DEFAULT_TEMPERATURE,
-            ),
+            model=BedrockModel(**model_config(model_id)),
             callback_handler=None,
             messages=messages,
         )
@@ -164,6 +182,9 @@ class GeospatialAgent:
                     'result': self.__post_process_result(event['result'])
                 }
             elif 'message' in event:
+                # Tools reading files are streamed after the other tool results of the same
+                # batch (e.g. the output of the code that wrote those files).
+                ready = []
                 for content in event['message']['content']:
                     if 'text' in content:
                         yield {"msg_type": "text", "text": content['text']}
@@ -173,31 +194,55 @@ class GeospatialAgent:
                         self.tool_uses[toolUse['toolUseId']] = toolUse['name']
                         toolUse["msg_type"] = "toolUse"
 
-                        if toolUse['name'] in UI_TOOLS:
-                            if toolUse['name'] == 'visualize_interactive_chart':
-                                with open(toolUse['input']['chart_path'], 'r') as f:
-                                    toolUse['chart_spec'] = f.read()
-                            else:
-                                toolUse['image'] = image_to_base64(toolUse['input']['image_path'])
-
-                        if toolUse['name'] == 'share_file_with_client':
-                            file_key = f"{self.session_id}/{os.path.basename(toolUse['input']['file_path'])}"
-                            with open(toolUse['input']['file_path'], 'rb') as f:
-                                s3_client.put_object(Bucket=FILE_SHARING_BUCKET, Key=file_key, Body=f)
-                            toolUse['pre_signed_s3_url'] = s3_client.generate_presigned_url(
-                                'get_object',
-                                Params={'Bucket': FILE_SHARING_BUCKET, 'Key': file_key},
-                                ExpiresIn=PRESIGNED_URL_EXPIRATION
-                            )
+                        if toolUse['name'] in FILE_TOOLS:
+                            # The model may batch the code writing the file and the tool using it
+                            # in the same message: defer reading the file until the tools have run.
+                            self.pending_file_tools[toolUse['toolUseId']] = toolUse
+                            continue
 
                         yield toolUse
 
                     elif 'toolResult' in content:
                         toolResult = content['toolResult']
                         toolResult['name'] = self.tool_uses[toolResult['toolUseId']]
+                        toolResult["msg_type"] = "toolResult"
 
-                        if toolResult['name'] in UI_TOOLS:
+                        if toolResult['name'] in FILE_TOOLS:
+                            toolUse = self.pending_file_tools.pop(toolResult['toolUseId'], None)
+                            if toolUse is not None:
+                                # The results of UI tools are not meaningful: don't stream them.
+                                ready.append((toolUse, None if toolResult['name'] in UI_TOOLS else toolResult))
                             continue
 
-                        toolResult["msg_type"] = "toolResult"
                         yield toolResult
+
+                # The tool-result message is emitted after every tool of the batch has run,
+                # so the files written by the code are now available.
+                for toolUse, toolResult in ready:
+                    yield self.__load_file(toolUse)
+                    if toolResult is not None:
+                        yield toolResult
+
+    def __load_file(self, toolUse):
+        """Attach the image / chart spec / shared file URL to a toolUse event, once its file exists."""
+        try:
+            name = toolUse['name']
+            if name == 'visualize_interactive_chart':
+                with open(toolUse['input']['chart_path'], 'r') as f:
+                    toolUse['chart_spec'] = f.read()
+            elif name == 'share_file_with_client':
+                file_path = toolUse['input']['file_path']
+                file_key = f"{self.session_id}/{os.path.basename(file_path)}"
+                with open(file_path, 'rb') as f:
+                    s3_client.put_object(Bucket=FILE_SHARING_BUCKET, Key=file_key, Body=f)
+                toolUse['pre_signed_s3_url'] = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': FILE_SHARING_BUCKET, 'Key': file_key},
+                    ExpiresIn=PRESIGNED_URL_EXPIRATION
+                )
+            else:
+                toolUse['image'] = image_to_base64(toolUse['input']['image_path'])
+        except (OSError, KeyError) as e:
+            # Don't abort the whole analysis because one file is missing.
+            return {"msg_type": "text", "text": f"⚠ Could not load the output of {toolUse['name']}: {e}"}
+        return toolUse

@@ -18,6 +18,13 @@ tsconfig.tsbuildinfo
 # misc
 .DS_Store
 
+# end-to-end tests (Playwright)
+/e2e/.dist
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache
+
 # generated: copied from node_modules/plotly.js at predev/prebuild (scripts/copy-plotly.mjs)
 public/plotly.min.js
 

@@ -23,6 +23,7 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.0",
     "@types/mapbox__mapbox-gl-draw": "^1.4.9",
     "@types/node": "^22.15.0",
     "@types/react": "^19.2.8",
@@ -42,6 +43,8 @@
     "start": "vite",
     "prebuild": "node scripts/copy-plotly.mjs",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p e2e",
+    "test:e2e": "playwright test"
   }
 }
