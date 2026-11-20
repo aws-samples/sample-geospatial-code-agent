@@ -66,6 +66,28 @@ def test_solution_user_agent_is_registered(service):
     assert SOLUTION_UA in (session._session.user_agent_extra or "")
 
 
+def test_clients_send_solution_user_agent_token(service):
+    from geospatial_agent.solution_user_agent import SOLUTION_UA
+
+    class _Stop(Exception):
+        pass
+
+    captured = {}
+
+    def grab(request, **kwargs):
+        captured["ua"] = request.headers["User-Agent"].decode()
+        raise _Stop()
+
+    # A fresh Session: the shared default session may predate the hook in the test process.
+    client = boto3.session.Session().client(
+        "s3", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="y"
+    )
+    client.meta.events.register("before-send.s3.*", grab)
+    with pytest.raises(_Stop):
+        client.list_buckets()
+    assert SOLUTION_UA in captured["ua"].split()
+
+
 def test_invocation_streams_full_analysis(client, monkeypatch, tmp_path, stac_searches):
     from geospatial_agent import agent
     from geospatial_agent.bedrock_models import DEFAULT_MODEL_ID

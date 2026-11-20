@@ -11,6 +11,8 @@ from aws_cdk import (
 from constructs import Construct
 from cdk_nag import NagSuppressions
 
+from stacks.solution import SOLUTION_USER_AGENT
+
 
 class FalconPerceptionStack(Stack):
     """SageMaker endpoint for Falcon-Perception object detection.
@@ -162,6 +164,7 @@ class FalconPerceptionStack(Stack):
             timeout=Duration.minutes(15),
             code=_lambda.Code.from_asset("lambda/func_build_trigger"),
             role=build_trigger_role,
+            environment={"USER_AGENT_STRING": SOLUTION_USER_AGENT},
         )
 
         NagSuppressions.add_resource_suppressions(build_trigger_role,

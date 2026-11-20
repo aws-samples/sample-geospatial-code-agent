@@ -7,6 +7,7 @@ from stacks.vpc_stack import VPCStack
 from stacks.agentcore_stack import AgentCoreStack
 from stacks.webapp_stack import WebAppStack
 from stacks.falcon_perception_stack import FalconPerceptionStack
+from stacks.solution import stack_description
 
 env = cdk.Environment(
     account=os.environ.get("AWS_ACCOUNT") or os.environ.get("CDK_DEFAULT_ACCOUNT"),
@@ -17,19 +18,22 @@ region = env.region or os.environ.get("AWS_REGION") or os.environ.get("CDK_DEFAU
 
 app = cdk.App()
 
-vpc_stack = VPCStack(app, "GeospatialAgentVPCStack", env=env)
+vpc_stack = VPCStack(app, "GeospatialAgentVPCStack", env=env, description=stack_description("V"))
 
-agentcore_stack = AgentCoreStack(app, "GeospatialAgentCoreStack", vpc=vpc_stack.vpc, env=env)
+agentcore_stack = AgentCoreStack(app, "GeospatialAgentCoreStack", vpc=vpc_stack.vpc, env=env,
+                                description=stack_description())
 
 # Optional: Object detection model endpoint (GPU instance — adds cost)
 deploy_object_detection = app.node.try_get_context("deploy_object_detection") or False
 if deploy_object_detection in ("true", "True", True):
-    falcon_stack = FalconPerceptionStack(app, "FalconPerceptionStack", vpc=vpc_stack.vpc, env=env)
+    falcon_stack = FalconPerceptionStack(app, "FalconPerceptionStack", vpc=vpc_stack.vpc, env=env,
+                                         description=stack_description("F"))
 
 # WebApp stack uses region in the ID to avoid CloudFront OAC name collisions
 # (OAC is a global resource and its name is derived from the construct path)
 webapp_stack_id = f"GeospatialWebAppStack-{region}" if region != "us-east-1" else "GeospatialWebAppStack"
-webapp_stack = WebAppStack(app, webapp_stack_id, agent_stack=agentcore_stack, env=env)
+webapp_stack = WebAppStack(app, webapp_stack_id, agent_stack=agentcore_stack, env=env,
+                           description=stack_description("W"))
 
 cdk.Aspects.of(app).add(cdk_nag.AwsSolutionsChecks())
 app.synth()
